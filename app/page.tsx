@@ -3,19 +3,18 @@
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 
-type BugReport = {
-  id: number
-  subject: string
-  message: string
-  created_datetime_utc: string
+type Caption = {
+  id: string
+  content: string
 }
 
 export default function Home() {
   const [supabase] = useState(() => createClient())
 
   const [user, setUser] = useState<any>(null)
-  const [data, setData] = useState<BugReport[]>([])
+  const [data, setData] = useState<Caption[]>([])
   const [loading, setLoading] = useState(true)
+  const [submittingVoteId, setSubmittingVoteId] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadUserAndData() {
@@ -29,11 +28,12 @@ export default function Home() {
 
       if (user) {
         const { data, error } = await supabase
-            .from("bug_reports")
-            .select("id, subject, message, created_datetime_utc")
+            .from("captions")
+            .select("id, content")
+            .limit(20)
 
         if (error) {
-          console.error(error)
+          console.error("Error loading captions:", error)
           setData([])
         } else {
           setData(data || [])
@@ -59,7 +59,7 @@ export default function Home() {
   }, [supabase])
 
   useEffect(() => {
-    async function loadBugReports() {
+    async function loadCaptions() {
       if (!user) {
         setData([])
         setLoading(false)
@@ -69,11 +69,12 @@ export default function Home() {
       setLoading(true)
 
       const { data, error } = await supabase
-          .from("bug_reports")
-          .select("id, subject, message, created_datetime_utc")
+          .from("captions")
+          .select("id, content")
+          .limit(20)
 
       if (error) {
-        console.error(error)
+        console.error("Error loading captions:", error)
         setData([])
       } else {
         setData(data || [])
@@ -82,7 +83,7 @@ export default function Home() {
       setLoading(false)
     }
 
-    loadBugReports()
+    loadCaptions()
   }, [user, supabase])
 
   async function handleLogin() {
@@ -100,9 +101,42 @@ export default function Home() {
     setData([])
   }
 
+  async function handleVote(captionId: string, voteValue: number) {
+    if (!user) {
+      alert("You must be logged in to vote.")
+      return
+    }
+
+    try {
+      setSubmittingVoteId(captionId)
+
+      const { error } = await supabase.from("caption_votes").insert({
+        caption_id: captionId,
+        vote_value: voteValue,
+        profile_id: user.id,
+        created_by_user_id: user.id,
+        modified_by_user_id: user.id,
+        is_from_study: false,
+      })
+
+      if (error) {
+        console.error("Error inserting vote:", error)
+        alert("Failed to submit vote. Check the console for details.")
+        return
+      }
+
+      alert(voteValue === 1 ? "Upvote submitted!" : "Downvote submitted!")
+    } catch (err) {
+      console.error("Unexpected vote error:", err)
+      alert("Something went wrong while submitting your vote.")
+    } finally {
+      setSubmittingVoteId(null)
+    }
+  }
+
   return (
       <main style={{ padding: "24px", fontFamily: "Arial, sans-serif" }}>
-        <h1 style={{ marginBottom: "20px" }}>Bug Reports</h1>
+        <h1 style={{ marginBottom: "20px" }}>Captions</h1>
 
         <div style={{ marginBottom: "20px" }}>
           {user ? (
@@ -151,7 +185,7 @@ export default function Home() {
                   }}
               >
                 <p style={{ marginTop: 0 }}>
-                  Please log in with Google to view the bug reports.
+                  Please log in with Google to view and rate captions.
                 </p>
                 <button
                     onClick={handleLogin}
@@ -174,7 +208,7 @@ export default function Home() {
         ) : !user ? (
             <p>This content is gated. Log in to continue.</p>
         ) : data.length === 0 ? (
-            <p>No data found.</p>
+            <p>No captions found.</p>
         ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               {data.map((item) => (
@@ -187,13 +221,41 @@ export default function Home() {
                         boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
                       }}
                   >
-                    <h2 style={{ margin: "0 0 8px 0" }}>
-                      #{item.id} - {item.subject}
-                    </h2>
-                    <p style={{ margin: "0 0 8px 0" }}>{item.message}</p>
-                    <p style={{ margin: 0, color: "#666", fontSize: "14px" }}>
-                      Created: {item.created_datetime_utc}
+                    <h2 style={{ margin: "0 0 8px 0" }}>Caption</h2>
+
+                    <p style={{ margin: "0 0 16px 0", fontSize: "16px", lineHeight: "1.5" }}>
+                      {item.content}
                     </p>
+
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <button
+                          onClick={() => handleVote(item.id, 1)}
+                          disabled={submittingVoteId === item.id}
+                          style={{
+                            padding: "10px 16px",
+                            borderRadius: "8px",
+                            border: "1px solid #ccc",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                      >
+                        👍 Upvote
+                      </button>
+
+                      <button
+                          onClick={() => handleVote(item.id, -1)}
+                          disabled={submittingVoteId === item.id}
+                          style={{
+                            padding: "10px 16px",
+                            borderRadius: "8px",
+                            border: "1px solid #ccc",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                      >
+                        👎 Downvote
+                      </button>
+                    </div>
                   </div>
               ))}
             </div>
